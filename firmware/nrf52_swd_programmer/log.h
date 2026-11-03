@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * log.h - debug output on the Feather's serial port (or stdout in the PC test).
  */

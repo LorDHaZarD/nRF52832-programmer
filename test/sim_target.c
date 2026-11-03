@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * sim_target.c - cycle-level software model of an nRF52832 SWD target.
  *

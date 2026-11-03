@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * config.h - every user-adjustable setting of the nRF52832 SWD programmer.
  *

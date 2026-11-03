@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * test_main.c - runs the real programmer code against the simulated target.
  *

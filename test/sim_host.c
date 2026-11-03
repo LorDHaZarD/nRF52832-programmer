@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * sim_host.c - PC replacements for the Feather services: time, log, LEDs and
  * the HEX file source (a normal file instead of the SD card).

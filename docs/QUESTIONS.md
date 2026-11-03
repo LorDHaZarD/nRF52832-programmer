@@ -1,8 +1,11 @@
-# Questions before implementation (single Q&A round)
+# Design questions and answers
 
-Each question has a **default**. Reply "default" (or just skip it) to accept it, or
-write your answer under it. Questions 1, 5, 7 and 9 matter most; the rest have safe
-defaults. Section references point into [SPEC.md](SPEC.md).
+These questions were asked before implementation, against the first draft of
+the spec (which still assumed an AVR host). The answers at the end changed
+the design; [SPEC.md](SPEC.md) rev 2 is the current reference.
+
+Each question offered a default. Section references point into the first
+draft of the spec.
 
 ---
 

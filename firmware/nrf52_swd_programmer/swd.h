@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * swd.h - ARM Serial Wire Debug (ADIv5) host, bit-banged.
  *

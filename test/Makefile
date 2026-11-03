@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # PC test: runs the firmware's C modules against a simulated nRF52832.
 #   make        build and run all tests
 FW      := ../firmware/nrf52_swd_programmer

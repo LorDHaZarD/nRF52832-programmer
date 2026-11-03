@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * swd_port.h - pin-level access for the bit-banged SWD interface and the
  * target reset line, plus the few timing services the C modules need.

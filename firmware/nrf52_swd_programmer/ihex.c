@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * ihex.c - streaming Intel HEX parser. See ihex.h.
  */

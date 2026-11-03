@@ -7,7 +7,12 @@ nRF52832 reads an Intel HEX file from an SD card, recovers the target over SWD
 result on three LEDs.
 
 * [Specification](docs/SPEC.md)
-* [Questions and answers](docs/QUESTIONS.md)
+* [Design questions and answers](docs/QUESTIONS.md)
+
+> **Status:** the firmware passes the PC simulation test suite and a syntax
+> check against the Adafruit nRF52 core, but it has not yet been run on real
+> hardware. Please report bench results (and the measured SWCLK rate) as
+> GitHub issues.
 
 ## Wiring
 
@@ -61,7 +66,10 @@ port and flash controller: full program and verify runs (protected and
 unprotected targets), slow flash, a stuck flash bit, bad HEX files, missing
 card, file or target.
 
-## Third-party code
+## License
 
-Petit FatFs R0.03a, (C) ChaN, under its own permissive license (see the header
-of `pff.c`).
+MIT, see [LICENSE](LICENSE).
+
+Third-party code: Petit FatFs R0.03a (`pff.c`, `pff.h`, `diskio.h`,
+`pffconf.h`), Copyright (C) ChaN, under its own permissive license, which is
+kept in the header of `pff.c`. It is compatible with MIT.

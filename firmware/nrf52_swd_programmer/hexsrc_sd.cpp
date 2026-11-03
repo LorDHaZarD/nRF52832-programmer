@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * hexsrc_sd.cpp - SD card (SPI mode) driver, Petit FatFs disk interface and
  * the HEX file source used by programmer.c.

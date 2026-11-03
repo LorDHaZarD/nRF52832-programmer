@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 LorDHaZarD
 """Generate Intel HEX test files and the matching expected flash images.
 
 Usage: make_test_hex.py OUTDIR

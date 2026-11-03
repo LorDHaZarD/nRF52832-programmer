@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * hexsrc.h - where the HEX file comes from. On the Feather this is the SD
  * card through Petit FatFs (hexsrc_sd.cpp); the PC test reads a normal file.

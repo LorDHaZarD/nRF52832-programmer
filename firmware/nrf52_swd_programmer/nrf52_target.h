@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * nrf52_target.h - nRF52832 specific debug operations over SWD.
  */

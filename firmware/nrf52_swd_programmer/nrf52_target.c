@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * nrf52_target.c - nRF52832 debug operations: connect, recover (CTRL-AP
  * ERASEALL), halt, NVMC programming, read-back and reset.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * programmer.c - the programming cycle. See programmer.h and docs/SPEC.md.
  *

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 LorDHaZarD
 /*
  * programmer.h - one complete programming cycle:
  * open HEX file, connect, recover, program, write UICR, verify, reset.
