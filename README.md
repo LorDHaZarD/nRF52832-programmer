@@ -6,8 +6,14 @@ nRF52832 reads an Intel HEX file from an SD card, recovers the target over SWD
 (blank blocks skipped), writes fixed UICR values, verifies, and shows the
 result on three LEDs.
 
-* [Specification](docs/SPEC.md)
-* [Design questions and answers](docs/QUESTIONS.md)
+Documentation:
+
+* [Hardware guide](docs/hardware.md): parts list, wiring, target connector, SD card preparation
+* [User guide](docs/user-guide.md): installing the firmware, operating, LEDs, serial log, troubleshooting
+* [Configuration reference](docs/configuration.md): every `#define` in `config.h`
+* [Firmware architecture](docs/architecture.md): modules, programming cycle, SWD details, porting
+* [Testing](docs/testing.md): PC simulation tests and the bench test checklist
+* [Specification](docs/SPEC.md) and [design questions and answers](docs/QUESTIONS.md)
 
 > **Status:** the firmware passes the PC simulation test suite and a syntax
 > check against the Adafruit nRF52 core, but it has not yet been run on real
