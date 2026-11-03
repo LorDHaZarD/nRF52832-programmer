@@ -1,247 +1,239 @@
-# nRF52832 SWD Programmer on AVR: Specification (draft 1)
+# nRF52832 SWD Programmer: Specification (rev 2)
 
-Status: draft, waiting on answers in [QUESTIONS.md](QUESTIONS.md). Every item marked
-**[Q n]** depends on the answer to question n. Where a question is open, the
-spec states the default the implementation will use if the answer is "use default".
+Rev 2 folds in the answers to [QUESTIONS.md](QUESTIONS.md). The biggest change
+from rev 1: the programmer ("host") is now an **nRF52832 on an Adafruit Feather
+nRF52832**, built as an **Arduino IDE sketch**, instead of an AVR.
 
 ---
 
 ## 1. Purpose
 
-A stand-alone production programmer. An Atmel AVR ("host") reads an Intel HEX file
-from an SD card and programs it into the flash of a Nordic nRF52832 ("target") over
-SWD, writes four fixed UICR values, verifies, and signals the result on two LEDs.
-One button press programs one target.
+A stand-alone production programmer. The host reads an Intel HEX file from an
+SD card, recovers the target nRF52832 (erase plus protection removal),
+programs the file into flash over SWD in 512-byte blocks, writes fixed UICR
+values, verifies, and shows the result on three LEDs. One button press
+programs one target.
 
-## 2. Requirements (from the brief)
+## 2. Requirements
 
-| ID | Requirement |
-|----|-------------|
-| R1 | Source code in C, runs on an Atmel AVR. |
-| R2 | Programs nRF52832 flash over SWD. |
-| R3 | HEX file read from a 1 GB SD card over the AVR's hardware SPI (MOSI, MISO, SCK, SS). |
-| R4 | SD card holds a FAT32 file system; the file name is set by `#define` (default `FILENAME.HEX`). |
-| R5 | All clock rates and every I/O pin are set by `#define`. |
-| R6 | Idle loop waits for a push button (active low). |
-| R7 | Flash is programmed in 512-byte blocks; a block that is entirely `0xFF` is skipped. |
-| R8 | After flash, write UICR: `0x10001014 = 0x00074000`, `0x10001018 = 0x0007E000`, `0x10001200 = 0x00000015`, `0x10001204 = 0x00000015`. |
-| R9 | LED1 (active high, "BUSY") is on while programming. |
-| R10 | After programming, LED1 off, then verify flash against the HEX file. |
-| R11 | If verify passes, LED2 (active high, "PASS") turns on; return to idle. |
-| R12 | LED pins set by `#define`. |
-
-For reference, the UICR values mean:
-
-* `0x10001014` UICR.NRFFW[0] (BOOTLOADERADDR) = `0x74000`, the bootloader start.
-* `0x10001018` UICR.NRFFW[1] (MBR params page) = `0x7E000`.
-* `0x10001200/0x1204` UICR.PSELRESET[0/1] = 21, so P0.21 is the pin reset. Both
-  registers must hold the same value or the setting is ignored.
-
-These are the standard values for a Nordic Secure DFU bootloader layout on the
-nRF52832, so the HEX file is most likely a merged SoftDevice + application +
-bootloader image (relevant to [Q 9]).
+| ID | Requirement | Source |
+|----|-------------|--------|
+| R1 | Source code in C (Arduino sketch, C modules plus a small C++ glue layer). | brief, Q1, Q2 |
+| R2 | Host is an nRF52832 on an Adafruit Feather nRF52832. | Q1 |
+| R3 | Programs the target nRF52832 flash over SWD. | brief |
+| R4 | HEX file read from an SD card over SPI (MOSI, MISO, SCK, CS); FAT via Petit FatFs. | brief, Q3 |
+| R5 | File name set by `#define HEX_FILENAME`, 8.3, root directory. | brief, Q12 |
+| R6 | Every pin and clock rate set by `#define` (all in `config.h`). | brief, Q14 |
+| R7 | Idle loop waits for a push button (active low). | brief |
+| R8 | Before programming, recover the target (CTRL-AP ERASEALL), since protection may be set. | Q4, Q6 |
+| R9 | Program in 512-byte blocks, skipping blocks that are entirely `0xFF`. | brief |
+| R10 | HEX file is in ascending address order. | Q8 |
+| R11 | Ignore UICR records in the HEX file; write the UICR values from `config.h`, address and data both `#define`s. | brief, Q9 |
+| R12 | LED1 BUSY on while programming; off before verify. | brief |
+| R13 | Verify every non-blank block against the HEX file; skip blank blocks. | brief, Q10 |
+| R14 | LED2 PASS on after a good verify; LED3 FAIL on after any error. | brief, Q11 |
+| R15 | Target nRESET is wired to the programmer. | Q7 |
+| R16 | Debug messages on the Feather serial port at 115200 baud. | Q13 |
+| R17 | 3.3 V everywhere, direct wiring. | Q5 |
 
 ## 3. Hardware
 
-### 3.1 Host
+### 3.1 Wiring (defaults in `config.h`)
 
-Default target part **[Q 1]**: ATmega328P at 16 MHz, 5 V (Arduino Uno / Nano class).
-The design must fit in 2 KB of SRAM, which drives the choices below. A larger part
-(ATmega644P/1284P/2560) only needs pin and register `#define` changes.
+| Signal | Feather pin | Target / device |
+|--------|-------------|-----------------|
+| SD SCK | 12 (SCK) | SD CLK |
+| SD MOSI | 13 (MO) | SD DI / CMD |
+| SD MISO | 14 (MI) | SD DO / DAT0 |
+| SD CS | 11 | SD CS / DAT3 (same pin as the Adalogger FeatherWing) |
+| SWCLK | 27 | target SWDCLK |
+| SWDIO | 30 (A6) | target SWDIO |
+| nRESET | 29 (A5) | target P0.21 / nRESET |
+| Button | 7 | push button to GND (internal pull-up) |
+| LED1 BUSY | 15 | LED + resistor to GND (active high) |
+| LED2 PASS | 16 | LED + resistor to GND (active high) |
+| LED3 FAIL | 2 (A0) | LED + resistor to GND (active high) |
+| Serial | USB (CP2104) | debug log, 115200 baud |
+| GND, 3V | GND, 3V | target GND (and 3.3 V if the target is not self-powered) |
 
-### 3.2 Connections (defaults, all in `config.h`)
+Pins avoided on purpose: 31/A7 (battery divider), 9/10 (NFC), 17/19 (on-board
+LEDs used by the core), 20 (DFU), 6/8 (serial).
 
-| Signal | Default AVR pin (ATmega328P) | Notes |
-|--------|------------------------------|-------|
-| SD MOSI | PB3 | fixed by hardware SPI |
-| SD MISO | PB4 | fixed by hardware SPI |
-| SD SCK | PB5 | fixed by hardware SPI |
-| SD CS (SS) | PB2 | Hardware SS; kept as an output so SPI stays master. |
-| SWCLK | PD2 | bit-banged |
-| SWDIO | PD3 | bit-banged, bidirectional |
-| Target nRESET | PD4 (optional, [Q 7]) | open-drain style: driven low or released |
-| Button | PD5 | input, internal pull-up on, active low |
-| LED1 BUSY | PD6 | active high |
-| LED2 PASS | PD7 | active high |
-| Debug UART TX | PD1 | optional, [Q 13] |
+### 3.2 Levels and power
 
-The brief's pin names are honoured via `#define`: each signal has a `_PORT`, `_DDR`,
-`_PIN` and `_BIT` define so moving a pin is a one-line change.
+Both chips and the SD card run at 3.3 V, so all lines are wired directly.
+The target shares ground with the Feather. The firmware does not switch target
+power.
 
-### 3.3 Voltage levels **[Q 5]**
-
-The nRF52832 runs at 1.7 V to 3.6 V and its pins are **not 5 V tolerant**. SD cards
-are 3.3 V only. If the AVR runs at 5 V, SWCLK, SWDIO, nRESET, SD CS, SD MOSI and SD
-SCK need level shifting, and SWDIO needs a bidirectional shifter (or a
-series-resistor + open-drain scheme). Default assumption: the AVR runs at 3.3 V
-(e.g. 8 MHz 3.3 V Pro Mini) so no shifters are needed. The firmware is the same
-either way; this is a hardware note.
-
-### 3.4 Target power
-
-Default assumption: the target board is powered by its own supply or by the
-programmer's 3.3 V rail, and shares ground with the host. The firmware does not
-switch target power.
-
-## 4. Clocks (all `#define`)
+## 4. Clocks and timing (`config.h`)
 
 | Define | Default | Meaning |
 |--------|---------|---------|
-| `F_CPU` | `16000000UL` | AVR core clock. |
-| `SD_SPI_INIT_DIV` | 128 | SPI divisor during card init (must give 100 to 400 kHz). |
-| `SD_SPI_FAST_DIV` | 2 | SPI divisor after init (8 MHz at 16 MHz F_CPU). |
-| `SWD_HALF_PERIOD_US` | 0 | Extra delay per SWCLK half period; 0 = as fast as the bit-bang loop runs (roughly 1 MHz at 16 MHz). |
-| `DEBOUNCE_MS` | 20 | Button debounce time. |
+| `SD_SPI_INIT_HZ` | 250 kHz | SPI clock during card identification |
+| `SD_SPI_FAST_HZ` | 8 MHz | SPI clock afterwards (nRF52832 maximum) |
+| `SWD_HALF_PERIOD_DELAY` | 2 | Delay-loop count per SWCLK half period (roughly 2 MHz SWCLK) |
+| `SWD_WAIT_RETRIES` | 2000 | Retries on an SWD WAIT response |
+| `TARGET_RESET_PULSE_MS` | 10 | nRESET low time |
+| `BUTTON_DEBOUNCE_MS` | 20 | Button must read low this long |
+| `DEBUG_BAUD` | 115200 | Serial log speed |
 
-## 5. Software architecture
+## 5. Software
 
-```
-src/
-  config.h       all #defines: pins, clocks, file name, UICR table, timeouts
-  main.c         idle loop, state machine, LED handling
-  swd.c/.h       bit-banged SWD PHY + DP/AP layer (ACK, WAIT retry, parity)
-  nrf52.c/.h     connect, halt, NVMC erase/write, UICR write, read-back, reset
-  ihex.c/.h      streaming Intel HEX parser -> 512-byte block assembler
-  sd.c/.h        SD card SPI driver (SDSC + SDHC, CMD0/8/55/41/58/17)
-  pff/           Petit FatFs (ChaN) for FAT read, or alternative [Q 3]
-Makefile         avr-gcc build, avrdude flash target [Q 2]
-```
-
-### 5.1 State machine
+### 5.1 Files
 
 ```
-IDLE --button pressed (debounced, low)--> START
-START: LED1 on, LED2 off
-  mount SD, open file           -> fail: ERROR(E_SD / E_FILE)
-  SWD connect, read IDCODE      -> fail: ERROR(E_SWD)
-  halt core, erase              -> fail: ERROR(E_ERASE)
-  PROGRAM pass (stream HEX)     -> fail: ERROR(E_HEX / E_WRITE)
-  write UICR                    -> fail: ERROR(E_UICR)
-LED1 off
-  VERIFY pass (re-stream HEX, read target, compare; also UICR) -> fail: ERROR(E_VERIFY)
-  reset target                  [Q 7]
-  LED2 on
+firmware/nrf52_swd_programmer/        Arduino sketch folder
+  nrf52_swd_programmer.ino   setup/loop, button, LEDs, serial log, time services
+  config.h                   every #define the user may change
+  programmer.c/.h            one programming cycle (state machine below)
+  nrf52_target.c/.h          connect, recover, halt, NVMC write, read-back, reset
+  swd.c/.h                   bit-banged SWD: packets, WAIT/FAULT, DP/AP, MEM-AP
+  swd_port.h                 direct GPIO register access for SWCLK/SWDIO/nRESET
+  ihex.c/.h                  streaming Intel HEX parser
+  hexsrc.h, hexsrc_sd.cpp    SD card SPI driver + Petit FatFs disk layer + file source
+  log.h                      LOG() macro, compiled out with DEBUG_SERIAL 0
+  pff.c/.h, pffconf.h, diskio.h   Petit FatFs R0.03a (ChaN), read-only
+test/                        PC test: same C modules against a simulated target
+```
+
+### 5.2 Cycle
+
+```
+IDLE (LED states from last cycle kept)
+  button low for 20 ms
+START: PASS off, FAIL off, BUSY on
+  1. mount SD, open HEX_FILENAME            fail -> SD / FILE error (target untouched)
+  2. pulse nRESET, SWD connect, IDCODE      fail -> SWD error (3 attempts)
+     power up debug, check CTRL-AP IDR      fail -> NOT_NRF52
+  3. recover: CTRL-AP ERASEALL, wait        fail -> RECOVER
+     if APPROTECTSTATUS still on: CTRL-AP reset, re-attach, check again  -> LOCKED
+     halt core
+  4. read FICR (part, variant, flash size)
+  5. NVMC write mode; PROGRAM pass over the file
+  6. NVMC read mode; write UICR table
+  7. BUSY off
+  8. VERIFY pass over the file, then read back UICR table
+  9. release core, SYSRESETREQ, debug power down, float SWD, pulse nRESET
+  PASS on            (any error: FAIL on, details on serial)
   wait for button release -> IDLE
-ERROR(code): LED indication per [Q 11] -> IDLE
 ```
 
-### 5.2 SWD layer
+### 5.3 SWD
 
-* Bit-banged on two GPIOs. The host changes SWDIO while SWCLK is low and the
-  target samples it on the rising edge; the target changes SWDIO after the rising
-  edge and the host samples it while SWCLK is high, before the next falling edge.
-* Connect sequence: >= 50 clocks with SWDIO high, JTAG-to-SWD sequence `0xE79E`,
-  >= 50 clocks high, >= 2 idle clocks, read DP IDCODE. Expected `0x2BA01477`.
-* Packet: 8-bit request (start, APnDP, RnW, A[2:3], parity, stop, park), turnaround,
-  3-bit ACK, data + parity, turnaround. ACK `WAIT` is retried up to a limit;
-  `FAULT` clears sticky errors via DP ABORT and fails the operation.
-* Power-up: write DP CTRL/STAT `CDBGPWRUPREQ | CSYSPWRUPREQ`, wait for both ACKs.
-* AHB-AP (AP 0): CSW = 32-bit, auto-increment single. TAR auto-increment wraps at
-  1 KB boundaries; 512-byte aligned blocks never cross one, so one TAR write per block.
+* Bit-banged with direct `NRF_P0` register writes. Host changes SWDIO while
+  SWCLK is high, drops SWCLK, target samples on the rising edge. Target data is
+  sampled while SWCLK is low (same scheme as CMSIS-DAP).
+* Connect: 56 ones, JTAG-to-SWD `0xE79E`, 56 ones, 8 idle, read IDCODE
+  (`0x2BA01477`), clear sticky errors.
+* WAIT is retried up to `SWD_WAIT_RETRIES`, FAULT clears sticky errors through
+  ABORT and fails the operation. No ACK means nothing is connected.
+* AHB-AP CSW: 32-bit, single auto-increment. Block reads use posted reads
+  (each AP read returns the previous result, RDBUFF for the last). 512-byte
+  aligned blocks never cross the 1 KB TAR wrap.
 
-### 5.3 Target operations (nRF52832)
+### 5.4 Recover (answer to Q4 and Q6)
 
-| Step | Registers |
-|------|-----------|
-| Halt core | DHCSR `0xE000EDF0` = `0xA05F0003` |
-| Access-port protection | If AHB-AP is locked (APPROTECT), use CTRL-AP (AP 1): ERASEALL `0x004` = 1, poll ERASEALLSTATUS `0x008` until 0, then reconnect. **[Q 6]** |
-| NVMC | base `0x4001E000`: READY `+0x400`, CONFIG `+0x504` (0 read, 1 write, 2 erase), ERASEPAGE `+0x508`, ERASEALL `+0x50C`, ERASEUICR `+0x514` |
-| Erase | Default **[Q 4]**: NVMC ERASEALL (erases all flash and UICR), poll READY. |
-| Write block | CONFIG = 1, TAR = block address, write 128 words through DRW, poll READY after the block (and whenever the AP returns WAIT), CONFIG = 0. Words equal to `0xFFFFFFFF` inside a non-blank block are skipped. |
-| UICR | CONFIG = 1, write the four words, poll READY, CONFIG = 0. Needs UICR erased first (ERASEALL covers this). |
-| Verify | CONFIG = 0, TAR = block address, read 128 words through DRW (first read is posted, read RDBUFF at the end). |
-| Reset | AIRCR `0xE000ED0C` = `0x05FA0004` (SYSRESETREQ), and/or pulse nRESET **[Q 7]**. UICR changes take effect only after reset. |
+"nRF recover" is the CTRL-AP (AP 1) ERASEALL: it erases flash, UICR and RAM
+and lifts access-port protection, which works even when APPROTECT is set.
+It replaces any NVMC erase. Older silicon reports protection lifted straight
+away; some revisions need a CTRL-AP reset first, which the firmware does
+only when APPROTECTSTATUS still says protected.
 
-Flash range checked: `0x00000000` to `0x0007FFFF` (512 KB). Data outside flash and
-outside UICR is an error.
+Note for newer nRF52832 silicon revisions (Rev 3 and later): these re-enable
+protection on every reset unless UICR.APPROTECT (`0x10001208`) holds
+`0x5A` (HwDisabled) and the application also writes APPROTECT.DISABLE. The
+programmer does not need this (it always recovers first), but if the
+programmed board must stay debuggable, add that UICR entry in `config.h`
+(an example is in the file).
 
-### 5.4 Intel HEX streaming and 512-byte blocks
+### 5.5 Programming
 
-The AVR cannot buffer the image (the target has 512 KB of flash, the host 2 KB of
-RAM), so the HEX file is processed as a stream with one 512-byte block buffer:
+* NVMC CONFIG = write enable for the whole pass. Each word: write TAR and DRW,
+  then poll NVMC.READY. Words equal to `0xFFFFFFFF` are skipped (already
+  erased).
+* HEX stream: types 00, 01, 02, 04 handled; 03 and 05 ignored; checksums
+  checked; a missing EOF record is an error.
+* One 512-byte buffer for the block at `addr & ~0x1FF`, pre-filled with `0xFF`.
+  When data moves to a higher block, the buffer is flushed. A lower block is
+  an error (R10). Data at `0x10001000`-`0x10001FFF` (UICR) is counted and
+  ignored (R11). Any other address at or above the flash size is an error.
+* Flush: all `0xFF` = skipped; otherwise written (program pass) or read back
+  and compared (verify pass).
+* A file with no flash data at all is an error (protects against the wrong file).
 
-1. Parse records: type 00 data, 01 EOF, 02 extended segment address, 04 extended
-   linear address; 03/05 (start address) are ignored. Every record's checksum is checked.
-2. Keep one 512-byte buffer for the block at `addr & ~0x1FF`, pre-filled with `0xFF`.
-   Data bytes land in it. When a byte belongs to a different block, the current
-   block is flushed and a new one is started.
-3. Flush: if all 512 bytes are `0xFF`, skip (R7). Otherwise write it.
-4. Gaps inside a block stay `0xFF`, which matches erased flash.
+### 5.6 UICR
 
-If the HEX file is not in ascending address order, a block can be flushed twice.
-That is safe after a full erase only if the two halves do not overlap, because
-writing `0xFF` words is skipped. The default is to detect a backwards jump into an
-already-written block and accept it only if the overlapping words were skipped
-(`0xFF`); otherwise error **[Q 8]**. nrfjprog/mergehex output is ascending, so this
-is an edge case.
+`UICR_ADDR_n` / `UICR_DATA_n`, n = 0..7, `UICR_ENTRY_COUNT` entries
+(default 4: NRFFW[0] = `0x74000`, NRFFW[1] = `0x7E000`, PSELRESET[0] and [1]
+= 21). Written after the flash with NVMC in write mode, then read back during
+verify.
 
-Verify re-opens the file, runs the same parser and block assembler, and for each
-non-blank block reads 128 words from the target and compares. Blank blocks are not
-read back by default **[Q 10]**.
+### 5.7 SD card and FAT
 
-### 5.5 SD card and file system
+* SPI mode: CMD0, CMD8, ACMD41 (HCS), CMD58, CMD16 for byte-addressed cards,
+  CMD17 single block reads. SDSC, SDHC/SDXC and MMC.
+* Petit FatFs reads FAT12, FAT16 and FAT32 (1 GB cards are often FAT16 out of
+  the box). Root directory, 8.3 name, upper-cased before lookup.
+* One cached 512-byte sector, so the FAT and directory lookups do not re-read
+  the card.
 
-* SPI mode, CMD0, CMD8, ACMD41 (with HCS), CMD58, CMD16 (512 for SDSC), CMD17 single
-  block reads. Supports SDSC (typical for 1 GB) and SDHC.
-* FAT read with Petit FatFs (by default) **[Q 3]**: about 4 to 6 KB of flash, about
-  50 bytes of RAM, no sector buffer, read-only, root directory, 8.3 names.
-  Supports FAT12/16/32.
-* The file name is `#define HEX_FILENAME "FILENAME.HEX"` (8.3, root directory) **[Q 12]**.
+### 5.8 Errors
 
-Note: 1 GB cards are almost always formatted **FAT16** from the factory, and many
-tools refuse to format a 1 GB card as FAT32. The firmware will read both, so this
-only matters for documentation.
+| Serial message | Cause |
+|----------------|-------|
+| SD card error | no card, card not answering, no FAT volume |
+| HEX file not found | `HEX_FILENAME` not in root directory |
+| no SWD connection to target | no ACK, wrong IDCODE, debug power-up failed |
+| target is not an nRF52 | CTRL-AP missing |
+| recover (ERASEALL) failed | ERASEALL did not finish in 3 s |
+| target still protected after recover | APPROTECTSTATUS stays on |
+| target core did not halt | DHCSR S_HALT not set |
+| HEX file format error | bad character, length, checksum, record type, missing EOF |
+| HEX file addresses not ascending | a record goes back to an earlier block |
+| HEX data outside target flash | address beyond flash and not UICR |
+| HEX file has no flash data | nothing to program |
+| flash write failed | SWD error or NVMC not ready |
+| UICR write failed | same, during UICR |
+| flash verify failed | first bad address, expected and read value are logged |
+| UICR verify failed | same, for UICR |
 
-### 5.6 RAM budget (ATmega328P)
+All errors turn on LED3 FAIL. LED1 is off and LED2 stays off.
 
-| Item | Bytes |
-|------|-------|
-| 512-byte block buffer | 512 |
-| Petit FatFs work area + read buffer for one HEX line (max 44 bytes for 16-byte records, sized 64) | ~110 |
-| Stack, globals | ~300 |
-| Total | ~950 of 2048 |
+## 6. Timing estimate (Q15)
 
-Verify reuses the same block buffer.
+Measured with the PC simulation (it counts SWD clock cycles exactly) for a
+typical merged image: MBR + S132-sized SoftDevice + 40 KB application + 22 KB
+bootloader = 210 KB, 420 blocks.
 
-### 5.7 Button
+| SWCLK | Program (incl. UICR) | Verify | Whole cycle |
+|-------|----------------------|--------|-------------|
+| 1 MHz | 21 to 25 s | 2.6 s | about 25 to 28 s |
+| 2 MHz (default) | 11 to 14 s | 1.3 s | about 13 to 16 s |
+| 4 MHz | 5 to 9 s | 0.7 s | about 7 to 10 s |
 
-Input with internal pull-up. Pressed = low for `DEBOUNCE_MS` continuously. After a
-cycle, the firmware waits for release before arming again, so holding the button
-does not restart programming **[Q 11]**.
+Plus about 0.1 to 0.3 s for ERASEALL and about 0.5 s to read the HEX file
+twice from the card. Program time scales with the amount of non-blank data;
+a 100 KB image takes about half. The program step is dominated by the
+per-word NVMC.READY poll (5 SWD transfers per word). If this ever needs to be
+faster, the next step is a small flash loader in target RAM, which would cut
+programming roughly in half to a third; it is not included because it cannot
+be proven without hardware.
 
-### 5.8 Error handling and codes
+The actual SWCLK rate depends on the bit-bang loop and should be checked once
+with a scope.
 
-| Code | Meaning |
-|------|---------|
-| E_SD | SD init failed / no card |
-| E_FILE | mount failed or file not found |
-| E_SWD | no SWD ACK or wrong IDCODE |
-| E_LOCKED | APPROTECT set and recovery not allowed / failed |
-| E_ERASE | erase timeout |
-| E_HEX | bad HEX record, checksum, address out of range |
-| E_WRITE | NVMC timeout or SWD fault while writing |
-| E_UICR | UICR write failed |
-| E_VERIFY | flash or UICR mismatch |
+## 7. Build and test
 
-How each is shown on the two LEDs is **[Q 11]**. Default: LED1 and LED2 both off, then
-LED1 blinks N times (N = code number), pause, repeat until the button is pressed.
+* Arduino IDE: install the "Adafruit nRF52" board package, select
+  "Adafruit Feather nRF52832", open `firmware/nrf52_swd_programmer`, upload.
+* PC test: `cd test && make` builds the C modules with gcc against a
+  cycle-level model of the target's SWD port, CTRL-AP, AHB-AP and NVMC, and
+  runs programming, verify and error cases (see `test/test_main.c`).
+* Bench test to do on hardware: blank target, programmed target, protected
+  target, no card, no file, corrupted HEX, verify failure (for example pull
+  SWDIO during verify), and measure SWCLK.
 
-## 6. Build
+## 8. Out of scope
 
-Default **[Q 2]**: avr-gcc + avr-libc with a Makefile (`make`, `make flash` via
-avrdude). Compiles cleanly with `-Wall -Wextra -Os`. The code is plain C99 so it
-also builds in Microchip Studio.
-
-## 7. Test plan
-
-* Host-side unit tests (gcc on a PC) for the HEX parser and block assembler,
-  using a sample merged HEX file, including blank-block skipping and gap filling.
-* Compile check for the chosen AVR part in CI-like `make`.
-* Bench test (by Dave, needs hardware): blank chip, programmed chip, locked chip,
-  missing card, missing file, corrupted HEX, verify failure (e.g. disconnect
-  mid-verify).
-
-## 8. Out of scope (unless asked)
-
-Programming other Nordic parts, SWD speeds above what bit-banging gives, writing to
-the SD card, long file names, USB/PC interface, target power switching.
+Other Nordic parts, a RAM flash loader, writing to the SD card, long file
+names, BLE, programming several targets at once.

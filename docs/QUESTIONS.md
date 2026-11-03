@@ -136,3 +136,26 @@ board, checking the HEX file against a CRC, or programming several targets.
 Default: none.
 
 > Answer:
+
+---
+
+## Answers (from Dave, 2026-11-03)
+
+| Q | Answer | Where it landed |
+|---|--------|-----------------|
+| 1 | Host changes from AVR to an nRF52832 on an Adafruit Feather. | SPEC 2, 3 |
+| 2 | Arduino IDE sketch. | `firmware/nrf52_swd_programmer/` |
+| 3 | Petit FatFs is OK. | vendored, `pffconf.h` |
+| 4 | Do an nRF recover, since protection bits may be set. | SPEC 5.4 |
+| 5 | 3.3 V, direct wired. | SPEC 3.2 |
+| 6 | Protection may be set, see Q4. | SPEC 5.4 |
+| 7 | Target reset pin is wired to the programmer. | `TARGET_PIN_RESET` |
+| 8 | HEX file is in ascending address order. | SPEC 5.5 |
+| 9 | Ignore UICR records in the file; write the given values; address and data as `#define`s. | `UICR_ADDR_n` / `UICR_DATA_n` |
+| 10 | Ignore blank blocks on verify. | SPEC 5.5 |
+| 11 | Add a third LED as a FAIL indicator. | `LED_FAIL_PIN` |
+| 12 | 8.3 name in the root directory, will be changed by `#define`. | `HEX_FILENAME` |
+| 13 | Serial debug messages, Feather default port and 115200 baud. | `DEBUG_SERIAL`, `DEBUG_BAUD` |
+| 14 | Use pins available on the Feather. | SPEC 3.1 |
+| 15 | Estimate the cycle time; typical image is much smaller than 512 KB. | SPEC 6 |
+| 16 | Nothing else. | |
